@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page, TestInfo } from "@playwright/test";
 import products from "../../seed/products.json";
 import promos from "../../seed/promos.json";
-import { DEFAULT_PASSWORD, FLUSH_WAIT_MS, SIGN_IN_BOUNCE_SHARE, VIEWPORTS } from "./config";
+import { DEFAULT_PASSWORD, SIGN_IN_BOUNCE_SHARE, VIEWPORTS } from "./config";
 import { dwell, typeInto } from "./pacing";
 import type { Session, Visitor } from "./plan";
 import { Rng } from "./rng";
@@ -53,29 +53,12 @@ export async function openSession(
   return { context, page, rng, log };
 }
 
-interface QueuedAnalytics {
-  pendo?: { flushNow?: (force?: boolean) => unknown };
-}
-
-/**
- * The page batches analytics events and sends them a few seconds later, so closing the browser
- * right after the last click drops them. Ask for the queue to be sent, then give it time.
- */
-async function flushAnalytics(page: Page): Promise<void> {
-  if (page.isClosed()) return;
-  await page
-    .evaluate(() => (window as QueuedAnalytics).pendo?.flushNow?.(true))
-    .catch(() => undefined);
-  await page.waitForTimeout(FLUSH_WAIT_MS).catch(() => undefined);
-}
-
-/** Lets queued events go out, and keeps the trace only when the session failed. */
+/** Keeps the trace only when the session failed. */
 export async function closeSession(
   run: SessionRun,
   testInfo: TestInfo,
   failed: boolean,
 ): Promise<void> {
-  await flushAnalytics(run.page);
   if (failed) {
     const path = testInfo.outputPath("trace.zip");
     await run.context.tracing.stop({ path });

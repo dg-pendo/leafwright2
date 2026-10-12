@@ -50,7 +50,7 @@ export async function addAddress(_prev: AccountState, formData: FormData): Promi
   });
   if (!parsed.success)
     return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
-  await saveAddress(session.user.id, parsed.data, "account");
+  await saveAddress(session.user.id, parsed.data);
   revalidatePath("/account");
   return { ok: true, message: "Address added." };
 }

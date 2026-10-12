@@ -8,7 +8,6 @@ import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { PromoTypeSchema, type Promo } from "@/lib/db/schema";
 import { fieldErrors, formValue } from "@/lib/orders/checkout";
-import { sessionIdentity, trackServerEvent } from "@/lib/pendo.server";
 
 export interface PromoFormState {
   error?: string;
@@ -85,19 +84,6 @@ export async function savePromo(
     usageCount: existing?.usageCount ?? 0,
   };
   await (existing ? db.promos.update(promo.id, promo) : db.promos.create(promo));
-  trackServerEvent("Promo Saved", sessionIdentity(merchant.session), {
-    promoId: promo.id,
-    code: promo.code,
-    isNew: !existing,
-    type: promo.type,
-    value: promo.value,
-    startsAt: input.startsAt,
-    endsAt: input.endsAt,
-    durationDays: Math.round((Date.parse(promo.endsAt) - Date.parse(promo.startsAt)) / 864e5),
-    isActive: promo.isActive,
-    usageCount: promo.usageCount,
-    storeId: promo.storeId,
-  });
   revalidatePath("/admin/promos");
   revalidatePath("/");
   redirect("/admin/promos?saved=1");
@@ -109,18 +95,7 @@ export async function togglePromo(formData: FormData): Promise<void> {
   if (!merchant || !id) return;
   const promo = await db.promos.getById(id);
   if (!promo || promo.storeId !== merchant.store.id) return;
-  const isActive = !promo.isActive;
-  await db.promos.update(id, { isActive });
-  const now = Date.now();
-  trackServerEvent("Promo Toggled", sessionIdentity(merchant.session), {
-    promoId: promo.id,
-    code: promo.code,
-    isActive,
-    type: promo.type,
-    usageCount: promo.usageCount,
-    isWithinWindow: Date.parse(promo.startsAt) <= now && now <= Date.parse(promo.endsAt),
-    storeId: promo.storeId,
-  });
+  await db.promos.update(id, { isActive: !promo.isActive });
   revalidatePath("/admin/promos");
   revalidatePath("/");
 }

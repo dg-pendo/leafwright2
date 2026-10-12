@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { sessionIdentity, trackServerEvent } from "@/lib/pendo.server";
 
 const FollowSchema = z.object({ storeId: z.string().min(1), slug: z.string().min(1) });
 
@@ -24,15 +23,10 @@ export async function followStore(formData: FormData): Promise<void> {
   const user = await db.users.getById(session.user.id);
   if (!user) return;
   const following = user.followedStoreIds.includes(parsed.data.storeId);
-  const followedStoreIds = following
-    ? user.followedStoreIds.filter((id) => id !== parsed.data.storeId)
-    : [...user.followedStoreIds, parsed.data.storeId];
-  await db.users.update(user.id, { followedStoreIds });
-  trackServerEvent("Store Follow Toggled", sessionIdentity(session), {
-    storeId: parsed.data.storeId,
-    storeSlug: parsed.data.slug,
-    action: following ? "unfollow" : "follow",
-    followedStoreCount: followedStoreIds.length,
+  await db.users.update(user.id, {
+    followedStoreIds: following
+      ? user.followedStoreIds.filter((id) => id !== parsed.data.storeId)
+      : [...user.followedStoreIds, parsed.data.storeId],
   });
   revalidatePath(`/stores/${parsed.data.slug}`);
 }

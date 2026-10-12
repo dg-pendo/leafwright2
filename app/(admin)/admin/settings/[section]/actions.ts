@@ -3,19 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { currentMerchant } from "@/lib/auth/merchant";
-import { daysUntil } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
-import { MerchantRoleSchema, PlanSchema, type Plan } from "@/lib/db/schema";
+import { MerchantRoleSchema, PlanSchema } from "@/lib/db/schema";
 import { fieldErrors, formValue } from "@/lib/orders/checkout";
-import { sessionIdentity, trackServerEvent } from "@/lib/pendo.server";
 
 export interface SettingsState {
   error?: string;
   message?: string;
   fieldErrors?: Partial<Record<string, string>>;
-  /** The store's plan after a successful plan change. */
-  plan?: Plan;
 }
 
 function refresh() {
@@ -70,8 +66,9 @@ export async function inviteMember(
   const existing = await db.users.getByEmail(email);
   if (existing?.storeId === merchant.store.id)
     return { error: "That person is already on your team." };
-  const invites = await db.invites.listByStore(merchant.store.id);
-  const pending = invites.find((invite) => invite.email === email);
+  const pending = (await db.invites.listByStore(merchant.store.id)).find(
+    (invite) => invite.email === email,
+  );
   if (pending) return { error: "An invite is already out to that address." };
 
   await db.invites.create({
@@ -80,15 +77,6 @@ export async function inviteMember(
     email,
     role: parsed.data.role,
     sentAt: new Date().toISOString(),
-  });
-  const team = await db.users.listByStore(merchant.store.id);
-  // Never the invitee's email address.
-  trackServerEvent("Team Member Invited", sessionIdentity(merchant.session), {
-    storeId: merchant.store.id,
-    inviteeRole: parsed.data.role,
-    teamSize: team.length,
-    pendingInviteCount: invites.length + 1,
-    storePlan: merchant.store.plan,
   });
   revalidatePath("/admin/settings/team");
   return { message: `Invite sent to ${email}.` };
@@ -101,27 +89,12 @@ export async function changePlan(_prev: SettingsState, formData: FormData): Prom
   const parsed = PlanSchema.safeParse(formValue(formData, "plan"));
   if (!parsed.success) return { error: "Pick a plan." };
   if (parsed.data === merchant.store.plan) return { message: "You're already on that plan." };
-  const { plan: previousPlan, trialEndsAt } = merchant.store;
   await db.stores.update(merchant.store.id, {
     plan: parsed.data,
     trialEndsAt: parsed.data === "starter" ? merchant.store.trialEndsAt : undefined,
   });
-  const trialDaysRemaining = previousPlan === "starter" && trialEndsAt ? daysUntil(trialEndsAt) : 0;
-  const wasInTrial = trialDaysRemaining > 0;
-  trackServerEvent("Plan Changed", sessionIdentity(merchant.session), {
-    storeId: merchant.store.id,
-    previousPlan,
-    newPlan: parsed.data,
-    direction:
-      PlanSchema.options.indexOf(parsed.data) > PlanSchema.options.indexOf(previousPlan)
-        ? "upgrade"
-        : "downgrade",
-    wasInTrial,
-    trialDaysRemaining: wasInTrial ? trialDaysRemaining : undefined,
-    userRole: merchant.user.role,
-  });
   refresh();
-  return { message: `Switched to the ${parsed.data} plan.`, plan: parsed.data };
+  return { message: `Switched to the ${parsed.data} plan.` };
 }
 
 const PayoutSchema = z.object({
@@ -142,14 +115,7 @@ export async function updatePayout(
   });
   if (!parsed.success)
     return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
-  const isFirstPayoutAccount = !merchant.store.payoutAccountLast4;
   await db.stores.update(merchant.store.id, { payoutAccountLast4: parsed.data.account.slice(-4) });
-  // Never the account or routing number, nor the last four digits kept on the store.
-  trackServerEvent("Payout Account Updated", sessionIdentity(merchant.session), {
-    storeId: merchant.store.id,
-    isFirstPayoutAccount,
-    storePlan: merchant.store.plan,
-  });
   revalidatePath("/admin/settings/payouts");
   return { message: "Payout account updated. Only the last four digits are kept." };
 }

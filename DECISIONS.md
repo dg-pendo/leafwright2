@@ -285,9 +285,6 @@ $CRON_SECRET`. Without the secret the route only works outside production. `CRON
   run on top of the existing scenario weights, so the shopping and merchant mix is unchanged.
 - **Follow-through.** A shopper follows a recommended product link toward purchase only after an
   in-scope conversation.
-- **Flush before close.** The page batches analytics events and sends them seconds later, so a
-  context closed right after the last click lost the final reply and rating. `closeSession` asks
-  the page to send its queue and waits `FLUSH_WAIT_MS` (6 s) before closing.
 
 ## Anthropic workspace header
 
@@ -299,8 +296,7 @@ $CRON_SECRET`. Without the secret the route only works outside production. `CRON
 
 - **Same project, different plan.** `.github/workflows/conversations.yml` runs `pnpm traffic` with
   `TRAFFIC_MODE=conversations`, and `traffic.spec.ts` builds `buildConversationPlan` instead of
-  `buildPlan`. Sessions, pacing, the chat driver, flushing, and traces are shared with the
-  traffic bot.
+  `buildPlan`. Sessions, pacing, the chat driver, and traces are shared with the traffic bot.
 - **Coverage by rotation.** Each run's topics are the next slice of each persona's intent bank,
   indexed by the workflow's run number, so every intent comes up within two to four runs. The
   bank is interleaved by scope so any four consecutive topics include an unsupported ask.

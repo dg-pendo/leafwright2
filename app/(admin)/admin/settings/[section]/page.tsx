@@ -69,7 +69,7 @@ export default async function SettingsPage({ params }: PageProps<"/admin/setting
                   plan to keep selling.
                 </p>
               ) : null}
-              <PlanCards storeId={store.id} currentPlan={store.plan} canChange={isOwner} />
+              <PlanCards currentPlan={store.plan} canChange={isOwner} />
             </>
           ) : null}
           {section === "payouts" ? (

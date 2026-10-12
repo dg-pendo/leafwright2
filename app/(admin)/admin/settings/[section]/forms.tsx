@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Plan, Store } from "@/lib/db/schema";
-import { pendo } from "@/lib/pendo";
 import { cn } from "@/lib/utils";
 import { changePlan, inviteMember, updatePayout, updateStore, type SettingsState } from "./actions";
 
@@ -162,24 +161,8 @@ const PLANS: Array<{ plan: Plan; name: string; price: string; blurb: string; fea
     },
   ];
 
-export function PlanCards({
-  storeId,
-  currentPlan,
-  canChange,
-}: {
-  storeId: string;
-  currentPlan: Plan;
-  canChange: boolean;
-}) {
-  const [state, action, pending] = useActionState<SettingsState, FormData>(
-    async (prev, formData) => {
-      const result = await changePlan(prev, formData);
-      // Keep the account's plan current for the rest of this session.
-      if (result.plan) pendo.updateOptions({ account: { id: storeId, plan: result.plan } });
-      return result;
-    },
-    {},
-  );
+export function PlanCards({ currentPlan, canChange }: { currentPlan: Plan; canChange: boolean }) {
+  const [state, action, pending] = useActionState<SettingsState, FormData>(changePlan, {});
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">

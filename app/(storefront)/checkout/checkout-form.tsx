@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatMoney } from "@/lib/commerce/cart";
 import type { ShippingMethod } from "@/lib/db/schema";
-import { pendo } from "@/lib/pendo";
 import { placeOrder, type CheckoutState } from "./actions";
 
 interface Defaults {
@@ -21,20 +20,6 @@ interface Defaults {
   region: string;
   postal: string;
 }
-
-/** The cart as checkout opens, priced with standard shipping. Money is in cents. */
-interface CheckoutSummary {
-  itemCount: number;
-  storeCount: number;
-  subtotal: number;
-  discount: number;
-  total: number;
-  promoCode?: string;
-  hasSavedAddress: boolean;
-}
-
-/** Carts already reported this session, so remounting checkout for the same cart is quiet. */
-const reportedCheckouts = new Set<string>();
 
 function Field({
   id,
@@ -64,22 +49,13 @@ export function CheckoutForm({
   signedIn,
   defaults,
   shippingRates,
-  summary,
 }: {
   signedIn: boolean;
   defaults: Defaults;
   shippingRates: Record<ShippingMethod, number>;
-  summary: CheckoutSummary;
 }) {
   const [state, action, pending] = useActionState<CheckoutState, FormData>(placeOrder, {});
   const errors = state.fieldErrors ?? {};
-
-  useEffect(() => {
-    const key = [summary.itemCount, summary.subtotal, summary.total, summary.promoCode].join(":");
-    if (reportedCheckouts.has(key)) return;
-    reportedCheckouts.add(key);
-    pendo.track("Checkout Started", { ...summary, isGuest: !signedIn });
-  }, [summary, signedIn]);
 
   return (
     <form action={action} className="space-y-8" noValidate>

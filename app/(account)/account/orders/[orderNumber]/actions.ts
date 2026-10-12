@@ -6,12 +6,10 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { getCart, saveCart } from "@/lib/cart/server";
 import { addLine } from "@/lib/commerce/cart";
-import { daysSince } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { formValue } from "@/lib/orders/checkout";
 import { canRequestRefund, orderBelongsTo, REFUND_REQUEST_PREFIX } from "@/lib/orders/history";
-import { sessionIdentity, trackServerEvent } from "@/lib/pendo.server";
 
 export interface OrderActionState {
   ok?: boolean;
@@ -49,26 +47,8 @@ export async function reorder(
     lines = addLine(lines, product.id, line.quantity, variantId);
     added += 1;
   }
-  const reordered = {
-    orderNumber: owned.order.number,
-    storeId: owned.order.storeId,
-    orderLineCount: owned.order.lines.length,
-    linesAdded: added,
-    linesUnavailable: owned.order.lines.length - added,
-    daysSinceOrder: daysSince(owned.order.placedAt),
-  };
-  if (added === 0) {
-    trackServerEvent("Order Reordered", sessionIdentity(owned.session), {
-      ...reordered,
-      outcome: "none_available",
-    });
-    return { error: "None of those items are available right now." };
-  }
+  if (added === 0) return { error: "None of those items are available right now." };
   await saveCart({ ...cart, lines });
-  trackServerEvent("Order Reordered", sessionIdentity(owned.session), {
-    ...reordered,
-    outcome: added === owned.order.lines.length ? "full" : "partial",
-  });
   revalidatePath("/", "layout");
   redirect("/cart");
 }
@@ -102,15 +82,6 @@ export async function requestRefund(
         createdAt: new Date().toISOString(),
       },
     ],
-  });
-  // The reason is free text and may hold personal details, so only its length is sent.
-  trackServerEvent("Refund Requested", sessionIdentity(owned.session), {
-    orderNumber: owned.order.number,
-    storeId: owned.order.storeId,
-    orderStatus: owned.order.status,
-    orderTotal: owned.order.total,
-    daysSincePlaced: daysSince(owned.order.placedAt),
-    reasonLength: parsed.data.reason.length,
   });
   revalidatePath(`/account/orders/${owned.order.number}`);
   return { ok: true, message: "Refund requested. The nursery will follow up by email." };

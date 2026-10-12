@@ -604,7 +604,6 @@ Running 6 tests using 4 workers
 - [x] Multi-turn chat driver shared by shopper and merchant sessions (`e2e/traffic/scenarios/chat.ts`)
 - [x] 1–2 dedicated conversation sessions per run (`plan.ts`, `config.ts`)
 - [x] SPEC §12 and DECISIONS updated
-- [x] Sessions flush queued analytics events and wait before closing the browser (`session.ts`)
 - [x] Gates: typecheck, lint, test, build passed; `e2e:smoke` and a local traffic run skipped so local
       browsers do not report into the shared analytics subscription; verified by the deployed Actions run instead
 

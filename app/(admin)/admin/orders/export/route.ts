@@ -3,7 +3,6 @@ import { analytics } from "@/lib/analytics";
 import { filterRange, parseOrderFilters } from "@/lib/admin/order-filters";
 import { currentMerchant } from "@/lib/auth/merchant";
 import { db } from "@/lib/db";
-import { trackServerEvent } from "@/lib/pendo.server";
 
 export async function GET(request: Request): Promise<Response> {
   const merchant = await currentMerchant();
@@ -27,19 +26,6 @@ export async function GET(request: Request): Promise<Response> {
     to: filters.to ?? null,
     count: orders.length,
   });
-  trackServerEvent(
-    "Orders Exported",
-    { visitorId: merchant.user.id, accountId: merchant.store.id },
-    {
-      storeId: merchant.store.id,
-      status: filters.status ?? "all",
-      from: filters.from,
-      to: filters.to,
-      count: orders.length,
-      userRole: merchant.user.role,
-      storePlan: merchant.store.plan,
-    },
-  );
 
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response(csv, {

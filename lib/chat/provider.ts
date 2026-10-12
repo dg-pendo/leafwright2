@@ -18,13 +18,10 @@ export interface ChatRequest {
   persona: Persona;
   messages: Pick<ChatMessage, "role" | "content">[];
   context: ToolContext;
-  /** Called when the model stops without a usable answer: a refusal or a truncated tool call. */
-  onIncomplete?: (reason: "refusal" | "truncated") => void;
 }
 
 export interface ChatProvider {
   readonly name: "claude" | "scripted";
-  readonly model: string;
   stream(request: ChatRequest): AsyncIterable<string>;
 }
 
@@ -79,8 +76,7 @@ export function createAnthropicClient(workspaceId = process.env.ANTHROPIC_WORKSP
 export function createClaudeProvider(client: Anthropic = createAnthropicClient()): ChatProvider {
   return {
     name: "claude",
-    model: MODEL,
-    async *stream({ persona, messages, context, onIncomplete }) {
+    async *stream({ persona, messages, context }) {
       const runner = client.beta.messages.toolRunner({
         model: MODEL,
         max_tokens: 4096,
@@ -99,7 +95,6 @@ export function createClaudeProvider(client: Anthropic = createAnthropicClient()
         }
         const message = await messageStream.finalMessage();
         if (message.stop_reason === "refusal") {
-          onIncomplete?.("refusal");
           yield "\n\nI can't help with that one, but I'm glad to talk plants or sales.";
           return;
         }
@@ -107,7 +102,6 @@ export function createClaudeProvider(client: Anthropic = createAnthropicClient()
           message.stop_reason === "max_tokens" &&
           message.content.some((block) => block.type === "tool_use")
         ) {
-          onIncomplete?.("truncated");
           yield "\n\nThat answer ran long; try asking a narrower question.";
           return;
         }
@@ -119,7 +113,6 @@ export function createClaudeProvider(client: Anthropic = createAnthropicClient()
 export function createScriptedProvider(delayMs = 18): ChatProvider {
   return {
     name: "scripted",
-    model: "scripted",
     async *stream({ persona, messages, context }) {
       const last = [...messages].reverse().find((message) => message.role === "user");
       const reply = await scriptedReply(persona, last?.content ?? "", context);

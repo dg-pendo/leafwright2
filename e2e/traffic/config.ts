@@ -107,7 +107,4 @@ export const CHAT = {
   thumbsUpShare: { supported: 0.8, unsupported: 0.25, "off-topic": 0.5 },
 } as const;
 
-/** Time a session stays open after its last action so queued analytics events are sent. */
-export const FLUSH_WAIT_MS = 6_000;
-
 export const DEFAULT_PASSWORD = "leafwright-demo";

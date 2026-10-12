@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Checkout" };
 
 export default async function CheckoutPage() {
   const [session, cart] = await Promise.all([auth(), getCart()]);
-  const { totals, promo } = await priceStoredCart(cart);
+  const { totals } = await priceStoredCart(cart);
   if (totals.itemCount === 0) redirect("/cart");
 
   const user = session?.user ? await db.users.getById(session.user.id) : undefined;
@@ -48,15 +48,6 @@ export default async function CheckoutPage() {
             postal: defaultAddress?.postalCode ?? "",
           }}
           shippingRates={SHIPPING_RATES}
-          summary={{
-            itemCount: totals.itemCount,
-            storeCount: totals.groups.length,
-            subtotal: totals.subtotal,
-            discount: totals.discount,
-            total: totals.total,
-            promoCode: promo?.code,
-            hasSavedAddress: addresses.length > 0,
-          }}
         />
         <aside className="h-fit rounded-xl border p-6">
           <h2 className="font-semibold">Order summary</h2>

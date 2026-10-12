@@ -3,7 +3,6 @@ import { CardSchema } from "@/lib/commerce/payment";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { ShippingMethodSchema, type Address } from "@/lib/db/schema";
-import { trackServerEvent } from "@/lib/pendo.server";
 
 export const AddressFieldsSchema = z.object({
   name: z.string().trim().min(1, "Enter the recipient's name."),
@@ -41,14 +40,10 @@ export function fieldErrors(error: z.ZodError): Partial<Record<string, string>> 
   return out;
 }
 
-/** Where an address was saved from: the checkout checkbox or the account page. */
-export type AddressSource = "checkout" | "account";
-
 /** Stores an address on the signed-in user's profile. Shared by checkout and the account page. */
 export async function saveAddress(
   userId: string,
   input: z.infer<typeof SaveAddressSchema>,
-  source: AddressSource,
 ): Promise<Address> {
   const existing = await db.addresses.listByUser(userId);
   const duplicate = existing.find(
@@ -57,7 +52,7 @@ export async function saveAddress(
       address.postalCode === input.postal,
   );
   if (duplicate) return duplicate;
-  const address = await db.addresses.create({
+  return db.addresses.create({
     id: newId("addr"),
     userId,
     label: input.label,
@@ -69,17 +64,4 @@ export async function saveAddress(
     country: "US",
     isDefault: existing.length === 0,
   });
-  // Merchants have a shopper profile too; their store is the account.
-  const user = await db.users.getById(userId);
-  trackServerEvent(
-    "Address Saved",
-    { visitorId: userId, accountId: user?.storeId },
-    {
-      source,
-      label: address.label,
-      isDefault: address.isDefault,
-      savedAddressCount: existing.length + 1,
-    },
-  );
-  return address;
 }

@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { currentMerchant } from "@/lib/auth/merchant";
 import { CATEGORY_META } from "@/lib/catalog";
-import { daysSince, hoursSince } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import {
@@ -16,20 +15,12 @@ import {
   type Product,
 } from "@/lib/db/schema";
 import { fieldErrors, formValue } from "@/lib/orders/checkout";
-import { sessionIdentity, trackServerEvent, type TrackIdentity } from "@/lib/pendo.server";
 import { getRecordSource } from "@/lib/request-source";
 import { slugify } from "@/lib/slug";
 
 export interface ProductFormState {
   error?: string;
   fieldErrors?: Partial<Record<string, string>>;
-}
-
-/** A successful save: the stored product, the version it replaced, and who saved it. */
-interface SavedProduct {
-  product: Product;
-  previous?: Product;
-  identity: TrackIdentity;
 }
 
 const dollars = z
@@ -79,7 +70,7 @@ function readForm(formData: FormData) {
 async function upsert(
   formData: FormData,
   publish: boolean,
-): Promise<ProductFormState | SavedProduct> {
+): Promise<ProductFormState | { id: string }> {
   const merchant = await currentMerchant();
   if (!merchant) return { error: "Sign in to a store to manage products." };
   const parsed = readForm(formData);
@@ -129,7 +120,7 @@ async function upsert(
   await (existing ? db.products.update(product.id, product) : db.products.create(product));
   revalidatePath("/admin/products");
   revalidatePath("/products");
-  return { product, previous: existing, identity: sessionIdentity(merchant.session) };
+  return { id: product.id };
 }
 
 /** Creates or updates the product without changing a published product's status. */
@@ -138,26 +129,8 @@ export async function saveProduct(
   formData: FormData,
 ): Promise<ProductFormState> {
   const result = await upsert(formData, false);
-  if (!("product" in result)) return result;
-  const { product, previous } = result;
-  trackServerEvent("Product Saved", result.identity, {
-    productId: product.id,
-    storeId: product.storeId,
-    isNew: !previous,
-    status: product.status,
-    category: product.category,
-    price: product.price,
-    hasCompareAtPrice: product.compareAtPrice !== undefined,
-    inventory: product.inventory,
-    petSafe: product.care.petSafe,
-    difficulty: product.care.difficulty,
-    light: product.care.light,
-    water: product.care.water,
-    descriptionLength: product.description.length,
-    customSlug: product.slug !== slugify(product.name),
-    recordSource: product.source,
-  });
-  redirect(`/admin/products/${product.id}?saved=1`);
+  if (!("id" in result)) return result;
+  redirect(`/admin/products/${result.id}?saved=1`);
 }
 
 export async function publishProduct(
@@ -165,21 +138,8 @@ export async function publishProduct(
   formData: FormData,
 ): Promise<ProductFormState> {
   const result = await upsert(formData, true);
-  if (!("product" in result)) return result;
-  const { product, previous } = result;
-  trackServerEvent("Product Published", result.identity, {
-    productId: product.id,
-    storeId: product.storeId,
-    isNew: !previous,
-    previousStatus: previous?.status ?? "new",
-    isFirstPublish: !previous?.publishedAt,
-    hoursSinceCreated: hoursSince(product.createdAt),
-    category: product.category,
-    price: product.price,
-    inventory: product.inventory,
-    recordSource: product.source,
-  });
-  redirect(`/admin/products/${product.id}?published=1`);
+  if (!("id" in result)) return result;
+  redirect(`/admin/products/${result.id}?published=1`);
 }
 
 export async function archiveProduct(formData: FormData): Promise<void> {
@@ -189,16 +149,6 @@ export async function archiveProduct(formData: FormData): Promise<void> {
   const product = await db.products.getById(id);
   if (!product || product.storeId !== merchant.store.id) return;
   await db.products.update(id, { status: "archived" });
-  if (product.status !== "archived") {
-    trackServerEvent("Product Archived", sessionIdentity(merchant.session), {
-      productId: product.id,
-      storeId: product.storeId,
-      previousStatus: product.status,
-      category: product.category,
-      inventory: product.inventory,
-      daysSincePublished: product.publishedAt ? daysSince(product.publishedAt) : undefined,
-    });
-  }
   revalidatePath("/admin/products");
   revalidatePath(`/admin/products/${id}`);
   revalidatePath("/products");

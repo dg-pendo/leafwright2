@@ -3,12 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { currentMerchant } from "@/lib/auth/merchant";
-import { daysSince, hoursSince } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { formValue } from "@/lib/orders/checkout";
-import { hasRefundRequest } from "@/lib/orders/history";
-import { sessionIdentity, trackServerEvent } from "@/lib/pendo.server";
 
 export interface OrderAdminState {
   error?: string;
@@ -48,24 +45,10 @@ export async function fulfillOrder(
   if (found.order.status !== "placed" && found.order.status !== "paid") {
     return { error: "Only placed or paid orders can be fulfilled." };
   }
-  const fulfilledAt = new Date();
-  const trackingNumber = parsed.data.trackingNumber || found.order.trackingNumber;
   await db.orders.update(found.order.id, {
     status: "fulfilled",
-    fulfilledAt: fulfilledAt.toISOString(),
-    trackingNumber,
-  });
-  trackServerEvent("Order Fulfilled", sessionIdentity(found.merchant.session), {
-    orderId: found.order.id,
-    orderNumber: found.order.number,
-    storeId: found.order.storeId,
-    previousStatus: found.order.status,
-    hasTrackingNumber: Boolean(trackingNumber),
-    hoursToFulfill: hoursSince(found.order.placedAt, fulfilledAt),
-    orderTotal: found.order.total,
-    itemCount: found.order.lines.reduce((sum, line) => sum + line.quantity, 0),
-    shippingMethod: found.order.shippingMethod,
-    orderSource: found.order.source,
+    fulfilledAt: new Date().toISOString(),
+    trackingNumber: parsed.data.trackingNumber || found.order.trackingNumber,
   });
   refresh(found.order.id);
   return { message: "Marked as fulfilled." };
@@ -79,15 +62,6 @@ export async function refundOrder(
   if (!found) return { error: "That order isn't in your store." };
   if (found.order.status === "refunded") return { error: "This order was already refunded." };
   await db.orders.update(found.order.id, { status: "refunded" });
-  trackServerEvent("Order Refunded", sessionIdentity(found.merchant.session), {
-    orderId: found.order.id,
-    orderNumber: found.order.number,
-    storeId: found.order.storeId,
-    previousStatus: found.order.status,
-    refundAmount: found.order.total,
-    hadCustomerRequest: hasRefundRequest(found.order),
-    daysSincePlaced: daysSince(found.order.placedAt),
-  });
   refresh(found.order.id);
   return { message: "Order refunded." };
 }
