@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { fieldErrors, formValue, SaveAddressSchema, saveAddress } from "@/lib/orders/checkout";
+import { trackServerEvent, userActor } from "@/lib/pendo/server";
 
 export interface AccountState {
   ok?: boolean;
@@ -50,7 +51,14 @@ export async function addAddress(_prev: AccountState, formData: FormData): Promi
   });
   if (!parsed.success)
     return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
-  await saveAddress(session.user.id, parsed.data);
+  const saved = await saveAddress(session.user.id, parsed.data);
+  trackServerEvent("address_saved", userActor(session), {
+    source: "account",
+    label: saved.address.label,
+    isDefault: saved.address.isDefault,
+    isDuplicate: !saved.created,
+    addressCount: saved.addressCount,
+  });
   revalidatePath("/account");
   return { ok: true, message: "Address added." };
 }

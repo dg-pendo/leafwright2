@@ -2,13 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import type { Session } from "next-auth";
 import { auth } from "@/auth";
-import { clearCart, getCart, priceStoredCart } from "@/lib/cart/server";
+import { cartItemCount, clearCart, getCart, priceStoredCart } from "@/lib/cart/server";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
-import type { Order, OrderLine } from "@/lib/db/schema";
+import { ShippingMethodSchema, type Cart, type Order, type OrderLine } from "@/lib/db/schema";
 import { rememberGuestOrders } from "@/lib/orders/access";
 import { fieldErrors, formValue, PlaceOrderSchema, saveAddress } from "@/lib/orders/checkout";
+import { shopperActor, trackServerEvent } from "@/lib/pendo/server";
 import { getRecordSource } from "@/lib/request-source";
 
 export interface CheckoutState {
@@ -16,7 +18,35 @@ export interface CheckoutState {
   fieldErrors?: Partial<Record<string, string>>;
 }
 
+interface CheckoutFailure {
+  errorType: "validation" | "empty_cart" | "out_of_stock";
+  invalidFields?: string[];
+  productId?: string;
+  availableQuantity?: number;
+}
+
+/** Records why an order was not placed: field names only, never what was typed. */
+function trackCheckoutFailure(
+  session: Session | null,
+  cart: Cart,
+  shippingMethod: string | undefined,
+  failure: CheckoutFailure,
+): void {
+  const method = ShippingMethodSchema.safeParse(shippingMethod);
+  trackServerEvent("checkout_failed", shopperActor(session, cart.id), {
+    errorType: failure.errorType,
+    invalidFields: failure.invalidFields ?? null,
+    productId: failure.productId ?? null,
+    availableQuantity: failure.availableQuantity ?? null,
+    itemCount: cartItemCount(cart),
+    isGuest: !session?.user,
+    shippingMethod: method.success ? method.data : null,
+  });
+}
+
 export async function placeOrder(_prev: CheckoutState, formData: FormData): Promise<CheckoutState> {
+  const session = await auth();
+  const cart = await getCart();
   const parsed = PlaceOrderSchema.safeParse({
     email: formValue(formData, "email"),
     name: formValue(formData, "name"),
@@ -33,19 +63,30 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
     cardCvc: formValue(formData, "cardCvc"),
   });
   if (!parsed.success) {
-    return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+    const errors = fieldErrors(parsed.error);
+    trackCheckoutFailure(session, cart, formValue(formData, "shippingMethod") ?? "standard", {
+      errorType: "validation",
+      invalidFields: Object.keys(errors),
+    });
+    return { error: "Check the highlighted fields.", fieldErrors: errors };
   }
   const input = parsed.data;
 
-  const session = await auth();
-  const cart = await getCart();
   const { totals, promo } = await priceStoredCart(cart, input.shippingMethod);
-  if (totals.itemCount === 0) return { error: "Your cart is empty." };
+  if (totals.itemCount === 0) {
+    trackCheckoutFailure(session, cart, input.shippingMethod, { errorType: "empty_cart" });
+    return { error: "Your cart is empty." };
+  }
 
   for (const group of totals.groups) {
     for (const { product, variant, line } of group.lines) {
       const available = variant ? variant.inventory : product.inventory;
       if (available < line.quantity) {
+        trackCheckoutFailure(session, cart, input.shippingMethod, {
+          errorType: "out_of_stock",
+          productId: product.id,
+          availableQuantity: available,
+        });
         return { error: `Only ${available} of ${product.name} left in stock.` };
       }
     }
@@ -54,6 +95,7 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
   const source = await getRecordSource();
   const placedAt = new Date().toISOString();
   const customerId = session?.user?.id;
+  const actor = shopperActor(session, cart.id);
   const created: Order[] = [];
 
   for (const group of totals.groups) {
@@ -115,11 +157,36 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
   }
 
   if (customerId && input.saveAddress) {
-    await saveAddress(customerId, { ...input, label: "Home" });
+    const saved = await saveAddress(customerId, { ...input, label: "Home" });
+    trackServerEvent("address_saved", actor, {
+      source: "checkout",
+      label: saved.address.label,
+      isDefault: saved.address.isDefault,
+      isDuplicate: !saved.created,
+      addressCount: saved.addressCount,
+    });
   }
 
   await clearCart(cart);
   if (!customerId) await rememberGuestOrders(created.map((order) => order.number));
+
+  // Sent from here rather than the confirmation page so reloading that page cannot count twice.
+  trackServerEvent("order_placed", actor, {
+    orderNumbers: created.map((order) => order.number),
+    orderCount: created.length,
+    storeIds: created.map((order) => order.storeId),
+    itemCount: totals.itemCount,
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    shipping: totals.shipping,
+    tax: totals.tax,
+    total: totals.total,
+    shippingMethod: input.shippingMethod,
+    promoCode: created.find((order) => order.promoCode)?.promoCode ?? null,
+    isGuest: !customerId,
+    savedAddress: Boolean(customerId && input.saveAddress),
+    recordSource: source,
+  });
 
   revalidatePath("/", "layout");
   redirect(`/orders/${created[0].number}/confirmation`);

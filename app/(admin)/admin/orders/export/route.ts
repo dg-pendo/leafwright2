@@ -3,6 +3,7 @@ import { analytics } from "@/lib/analytics";
 import { filterRange, parseOrderFilters } from "@/lib/admin/order-filters";
 import { currentMerchant } from "@/lib/auth/merchant";
 import { db } from "@/lib/db";
+import { merchantActor, trackServerEvent } from "@/lib/pendo/server";
 
 export async function GET(request: Request): Promise<Response> {
   const merchant = await currentMerchant();
@@ -25,6 +26,15 @@ export async function GET(request: Request): Promise<Response> {
     from: filters.from ?? null,
     to: filters.to ?? null,
     count: orders.length,
+  });
+  trackServerEvent("orders_exported", merchantActor(merchant), {
+    storeId: merchant.store.id,
+    status: filters.status ?? null,
+    from: filters.from ?? null,
+    to: filters.to ?? null,
+    count: orders.length,
+    plan: merchant.store.plan,
+    userRole: merchant.user.role,
   });
 
   const stamp = new Date().toISOString().slice(0, 10);

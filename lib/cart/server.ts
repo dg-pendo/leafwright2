@@ -65,16 +65,24 @@ export async function clearCart(cart: Cart): Promise<void> {
   jar.delete(CART_COOKIE);
 }
 
+export interface CartMerge {
+  /** Whether there was an anonymous cart with items or a promo code to fold in. */
+  hadAnonymousCart: boolean;
+  linesMerged: number;
+}
+
 /** Folds the anonymous cookie cart into the user's stored cart and drops the cookie. */
-export async function mergeAnonymousCart(userId: string): Promise<void> {
+export async function mergeAnonymousCart(userId: string): Promise<CartMerge> {
   const anonymous = await readCookieCart();
-  if (!anonymous) return;
+  if (!anonymous) return { hadAnonymousCart: false, linesMerged: 0 };
   const existing = (await db.carts.getByUserId(userId)) ?? emptyCart(userId);
-  if (anonymous.lines.length || anonymous.promoCode) {
+  const hadAnonymousCart = anonymous.lines.length > 0 || Boolean(anonymous.promoCode);
+  if (hadAnonymousCart) {
     await db.carts.save(mergeCarts(anonymous, existing));
   }
   const jar = await cookies();
   jar.delete(CART_COOKIE);
+  return { hadAnonymousCart, linesMerged: anonymous.lines.length };
 }
 
 export interface PricedCart {

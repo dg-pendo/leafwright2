@@ -27,3 +27,5 @@ export type FeedbackBody = z.infer<typeof FeedbackSchema>;
 /** Response headers the client reads to map the streamed reply back to stored records. */
 export const CONVERSATION_HEADER = "x-conversation-id";
 export const MESSAGE_HEADER = "x-message-id";
+/** Which provider wrote the reply: `claude` or `scripted`. */
+export const PROVIDER_HEADER = "x-assistant-provider";

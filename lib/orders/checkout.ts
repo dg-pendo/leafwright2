@@ -40,19 +40,27 @@ export function fieldErrors(error: z.ZodError): Partial<Record<string, string>> 
   return out;
 }
 
+export interface SavedAddress {
+  address: Address;
+  /** False when the same street address and postal code were already on file. */
+  created: boolean;
+  /** How many addresses the user has on file afterwards. */
+  addressCount: number;
+}
+
 /** Stores an address on the signed-in user's profile. Shared by checkout and the account page. */
 export async function saveAddress(
   userId: string,
   input: z.infer<typeof SaveAddressSchema>,
-): Promise<Address> {
+): Promise<SavedAddress> {
   const existing = await db.addresses.listByUser(userId);
   const duplicate = existing.find(
     (address) =>
       address.line1.toLowerCase() === input.address1.toLowerCase() &&
       address.postalCode === input.postal,
   );
-  if (duplicate) return duplicate;
-  return db.addresses.create({
+  if (duplicate) return { address: duplicate, created: false, addressCount: existing.length };
+  const address = await db.addresses.create({
     id: newId("addr"),
     userId,
     label: input.label,
@@ -64,4 +72,5 @@ export async function saveAddress(
     country: "US",
     isDefault: existing.length === 0,
   });
+  return { address, created: true, addressCount: existing.length + 1 };
 }

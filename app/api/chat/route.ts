@@ -1,6 +1,11 @@
 import { auth } from "@/auth";
 import { isMerchant } from "@/lib/auth/callbacks";
-import { CONVERSATION_HEADER, ChatRequestSchema, MESSAGE_HEADER } from "@/lib/chat/conversation";
+import {
+  CONVERSATION_HEADER,
+  ChatRequestSchema,
+  MESSAGE_HEADER,
+  PROVIDER_HEADER,
+} from "@/lib/chat/conversation";
 import { getChatProvider } from "@/lib/chat/provider";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
@@ -122,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
       "Cache-Control": "no-store",
       [CONVERSATION_HEADER]: conversation.id,
       [MESSAGE_HEADER]: assistantId,
-      "X-Assistant-Provider": provider.name,
+      [PROVIDER_HEADER]: provider.name,
     },
   });
 }

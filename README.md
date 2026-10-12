@@ -58,6 +58,7 @@ Guests can check out with just an email; any Luhn-valid card (for example
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | no                             | Upstash Redis. When both are set, runtime data is stored there instead of process memory |
 | `NEXT_PUBLIC_ANALYTICS_WRITE_KEY`      | no                             | Enables the in-house analytics wrapper                                                   |
 | `NEXT_PUBLIC_ANALYTICS_ENDPOINT`       | no                             | Where the wrapper posts events; without it events are queued and logged                  |
+| `PENDO_TRACK_EVENT_SECRET`             | no                             | Server-only secret for Pendo track events from server code; without it they are skipped  |
 | `CRON_SECRET`                          | no (recommended in production) | Bearer token Vercel Cron sends to the nightly archive route                              |
 
 ## Data

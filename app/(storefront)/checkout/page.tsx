@@ -6,6 +6,7 @@ import { getCart, priceStoredCart } from "@/lib/cart/server";
 import { formatMoney, SHIPPING_RATES } from "@/lib/commerce/cart";
 import { db } from "@/lib/db";
 import { CheckoutForm } from "./checkout-form";
+import { CheckoutStarted } from "./checkout-started";
 
 export const metadata: Metadata = { title: "Checkout" };
 
@@ -20,6 +21,18 @@ export default async function CheckoutPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <CheckoutStarted
+        cartId={cart.id}
+        productIds={totals.groups.flatMap((group) => group.lines.map(({ product }) => product.id))}
+        itemCount={totals.itemCount}
+        subtotal={totals.subtotal}
+        discount={totals.discount}
+        total={totals.total}
+        storeCount={totals.groups.length}
+        promoCode={totals.groups.find((group) => group.promo)?.promo?.code ?? null}
+        isGuest={!session?.user}
+        hasSavedAddress={addresses.length > 0}
+      />
       <h1 className="text-3xl font-semibold tracking-tight">Checkout</h1>
       {!session?.user ? (
         <p className="mt-2 text-sm text-muted-foreground">

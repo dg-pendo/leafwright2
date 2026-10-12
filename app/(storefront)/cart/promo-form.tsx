@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics";
+import { pendo } from "@/lib/pendo/client";
 import { applyPromo, removePromo, type CartActionState } from "./actions";
 
 export function PromoForm({
@@ -17,13 +18,22 @@ export function PromoForm({
   const [state, action, pending] = useActionState<CartActionState, FormData>(
     async (prev, formData) => {
       const result = await applyPromo(prev, formData);
-      if (result.ok)
-        analytics.track("Promo Applied", {
-          code: String(formData.get("code") ?? "")
-            .trim()
-            .toUpperCase(),
+      const code = String(formData.get("code") ?? "")
+        .trim()
+        .toUpperCase();
+      if (result.ok) {
+        analytics.track("Promo Applied", { code, source: "cart" });
+        pendo.track("promo_applied", {
+          code,
           source: "cart",
+          promoType: result.appliedPromo?.type,
+          promoValue: result.appliedPromo?.value,
+          promoStoreId: result.appliedPromo?.storeId,
+          cartItemCount: result.appliedPromo?.cartItemCount,
         });
+      } else if (result.promoRejection) {
+        pendo.track("promo_code_rejected", { code, reason: result.promoRejection, source: "cart" });
+      }
       return result;
     },
     {},

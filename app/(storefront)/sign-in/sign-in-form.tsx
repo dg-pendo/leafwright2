@@ -1,13 +1,23 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { pendo } from "@/lib/pendo/client";
 import { signInAction, type SignInState } from "./actions";
+
+/** Failed attempts already recorded. Every attempt returns a new state object. */
+const recordedFailures = new WeakSet<SignInState>();
 
 export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
   const [state, action, pending] = useActionState<SignInState, FormData>(signInAction, {});
+
+  useEffect(() => {
+    if (!state.failureReason || recordedFailures.has(state)) return;
+    recordedFailures.add(state);
+    pendo.track("sign_in_failed", { reason: state.failureReason, callbackUrl });
+  }, [state, callbackUrl]);
 
   return (
     <form action={action} className="space-y-4" noValidate>

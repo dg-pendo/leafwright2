@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { currentMerchant } from "@/lib/auth/merchant";
+import { daysBetween } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { PromoTypeSchema, type Promo } from "@/lib/db/schema";
 import { fieldErrors, formValue } from "@/lib/orders/checkout";
+import { merchantActor, trackServerEvent } from "@/lib/pendo/server";
 
 export interface PromoFormState {
   error?: string;
@@ -84,6 +86,16 @@ export async function savePromo(
     usageCount: existing?.usageCount ?? 0,
   };
   await (existing ? db.promos.update(promo.id, promo) : db.promos.create(promo));
+  trackServerEvent("promo_saved", merchantActor(merchant), {
+    promoId: promo.id,
+    isNew: !existing,
+    code: promo.code,
+    promoType: promo.type,
+    value: promo.value,
+    durationDays: daysBetween(promo.startsAt, promo.endsAt),
+    isActive: promo.isActive,
+    storeId: promo.storeId,
+  });
   revalidatePath("/admin/promos");
   revalidatePath("/");
   redirect("/admin/promos?saved=1");
@@ -95,7 +107,16 @@ export async function togglePromo(formData: FormData): Promise<void> {
   if (!merchant || !id) return;
   const promo = await db.promos.getById(id);
   if (!promo || promo.storeId !== merchant.store.id) return;
-  await db.promos.update(id, { isActive: !promo.isActive });
+  const isActive = !promo.isActive;
+  await db.promos.update(id, { isActive });
+  trackServerEvent("promo_toggled", merchantActor(merchant), {
+    promoId: promo.id,
+    code: promo.code,
+    isActive,
+    promoType: promo.type,
+    usageCount: promo.usageCount,
+    storeId: promo.storeId,
+  });
   revalidatePath("/admin/promos");
   revalidatePath("/");
 }

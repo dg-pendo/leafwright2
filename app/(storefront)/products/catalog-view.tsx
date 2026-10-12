@@ -1,8 +1,9 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { ProductCard } from "@/components/storefront/product-card";
+import { reportSearchResults } from "@/components/storefront/search-form";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -62,6 +63,12 @@ export function CatalogView({
         return filtered.sort((a, b) => a.name.localeCompare(b.name));
     }
   }, [products, category, query, sort]);
+
+  // Runs on every URL change so a search from the header is completed by its first results.
+  const search = params.toString();
+  useEffect(() => {
+    if (query) reportSearchResults(query, visible.length);
+  }, [query, search, visible.length]);
 
   function update(key: string, value: string | undefined) {
     const next = new URLSearchParams(params.toString());

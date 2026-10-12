@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { currentMerchant } from "@/lib/auth/merchant";
+import { daysUntil } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { MerchantRoleSchema, PlanSchema } from "@/lib/db/schema";
 import { fieldErrors, formValue } from "@/lib/orders/checkout";
+import { merchantActor, trackServerEvent } from "@/lib/pendo/server";
 
 export interface SettingsState {
   error?: string;
@@ -38,7 +40,16 @@ export async function updateStore(
   });
   if (!parsed.success)
     return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const fieldsChanged = (["name", "region", "description"] as const).filter(
+    (field) => parsed.data[field] !== merchant.store[field],
+  );
   await db.stores.update(merchant.store.id, parsed.data);
+  trackServerEvent("store_details_updated", merchantActor(merchant), {
+    storeId: merchant.store.id,
+    fieldsChanged,
+    descriptionLength: parsed.data.description.length,
+    plan: merchant.store.plan,
+  });
   refresh();
   return { message: "Store details saved." };
 }
@@ -66,9 +77,8 @@ export async function inviteMember(
   const existing = await db.users.getByEmail(email);
   if (existing?.storeId === merchant.store.id)
     return { error: "That person is already on your team." };
-  const pending = (await db.invites.listByStore(merchant.store.id)).find(
-    (invite) => invite.email === email,
-  );
+  const invites = await db.invites.listByStore(merchant.store.id);
+  const pending = invites.find((invite) => invite.email === email);
   if (pending) return { error: "An invite is already out to that address." };
 
   await db.invites.create({
@@ -77,6 +87,14 @@ export async function inviteMember(
     email,
     role: parsed.data.role,
     sentAt: new Date().toISOString(),
+  });
+  const team = await db.users.listByStore(merchant.store.id);
+  trackServerEvent("team_member_invited", merchantActor(merchant), {
+    storeId: merchant.store.id,
+    invitedRole: parsed.data.role,
+    plan: merchant.store.plan,
+    pendingInviteCount: invites.length + 1,
+    teamSize: team.length,
   });
   revalidatePath("/admin/settings/team");
   return { message: `Invite sent to ${email}.` };
@@ -89,9 +107,25 @@ export async function changePlan(_prev: SettingsState, formData: FormData): Prom
   const parsed = PlanSchema.safeParse(formValue(formData, "plan"));
   if (!parsed.success) return { error: "Pick a plan." };
   if (parsed.data === merchant.store.plan) return { message: "You're already on that plan." };
+  const previousPlan = merchant.store.plan;
+  const trialDaysRemaining = merchant.store.trialEndsAt
+    ? daysUntil(merchant.store.trialEndsAt)
+    : null;
   await db.stores.update(merchant.store.id, {
     plan: parsed.data,
     trialEndsAt: parsed.data === "starter" ? merchant.store.trialEndsAt : undefined,
+  });
+  trackServerEvent("plan_changed", merchantActor(merchant), {
+    storeId: merchant.store.id,
+    previousPlan,
+    newPlan: parsed.data,
+    changeType:
+      PlanSchema.options.indexOf(parsed.data) > PlanSchema.options.indexOf(previousPlan)
+        ? "upgrade"
+        : "downgrade",
+    wasInTrial: previousPlan === "starter" && Boolean(trialDaysRemaining),
+    trialDaysRemaining,
+    userRole: merchant.user.role,
   });
   refresh();
   return { message: `Switched to the ${parsed.data} plan.` };
@@ -115,7 +149,15 @@ export async function updatePayout(
   });
   if (!parsed.success)
     return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const isFirstPayoutAccount = !merchant.store.payoutAccountLast4;
   await db.stores.update(merchant.store.id, { payoutAccountLast4: parsed.data.account.slice(-4) });
+  // Whether this is the first account on file; never the account or routing numbers.
+  trackServerEvent("payout_account_updated", merchantActor(merchant), {
+    storeId: merchant.store.id,
+    isFirstPayoutAccount,
+    plan: merchant.store.plan,
+    userRole: merchant.user.role,
+  });
   revalidatePath("/admin/settings/payouts");
   return { message: "Payout account updated. Only the last four digits are kept." };
 }

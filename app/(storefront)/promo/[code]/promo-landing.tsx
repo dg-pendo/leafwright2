@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { analytics } from "@/lib/analytics";
+import { pendo } from "@/lib/pendo/client";
 import { applyPromoCode, type CartActionState } from "../../cart/actions";
 
 export function PromoLanding({ code }: { code: string }) {
@@ -19,7 +20,17 @@ export function PromoLanding({ code }: { code: string }) {
       setResult(state);
       if (state.ok) {
         analytics.track("Promo Applied", { code, source: "link" });
+        pendo.track("promo_applied", {
+          code,
+          source: "link",
+          promoType: state.appliedPromo?.type,
+          promoValue: state.appliedPromo?.value,
+          promoStoreId: state.appliedPromo?.storeId,
+          cartItemCount: state.appliedPromo?.cartItemCount,
+        });
         router.replace("/products");
+      } else if (state.promoRejection) {
+        pendo.track("promo_code_rejected", { code, reason: state.promoRejection, source: "link" });
       }
     });
   }, [code, router]);
