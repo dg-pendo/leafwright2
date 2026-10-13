@@ -22,6 +22,8 @@ export interface ChatRequest {
 
 export interface ChatProvider {
   readonly name: "claude" | "scripted";
+  /** The model that writes replies, or "scripted" for the keyword-matched replies. */
+  readonly model: string;
   stream(request: ChatRequest): AsyncIterable<string>;
 }
 
@@ -76,6 +78,7 @@ export function createAnthropicClient(workspaceId = process.env.ANTHROPIC_WORKSP
 export function createClaudeProvider(client: Anthropic = createAnthropicClient()): ChatProvider {
   return {
     name: "claude",
+    model: MODEL,
     async *stream({ persona, messages, context }) {
       const runner = client.beta.messages.toolRunner({
         model: MODEL,
@@ -113,6 +116,7 @@ export function createClaudeProvider(client: Anthropic = createAnthropicClient()
 export function createScriptedProvider(delayMs = 18): ChatProvider {
   return {
     name: "scripted",
+    model: "scripted",
     async *stream({ persona, messages, context }) {
       const last = [...messages].reverse().find((message) => message.role === "user");
       const reply = await scriptedReply(persona, last?.content ?? "", context);

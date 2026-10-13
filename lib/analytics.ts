@@ -3,7 +3,12 @@
  * local development and the public demo send nothing. With a key, events go to
  * NEXT_PUBLIC_ANALYTICS_ENDPOINT when configured; otherwise they are queued in memory and
  * logged at debug level until a collector is chosen.
+ *
+ * Assistant conversation events are separate: `trackAgentEvent` hands them to the client script
+ * on the page and does nothing when that script is not loaded.
  */
+
+import type { AgentEventMetadata, AgentEventType } from "@/types/global";
 
 export type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
 
@@ -74,6 +79,19 @@ export const analytics = {
     });
   },
 };
+
+/**
+ * Records an assistant prompt, reply, or reaction. Does nothing on the server or before the
+ * client script has loaded.
+ */
+export function trackAgentEvent(type: AgentEventType, metadata: AgentEventMetadata): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.pendo?.trackAgent?.(type, metadata);
+  } catch {
+    // Analytics must never break the product; drop the event.
+  }
+}
 
 /** Events held in memory when a key is set but no endpoint is; useful in tests and debugging. */
 export function queuedAnalyticsEvents(): AnalyticsEvent[] {
