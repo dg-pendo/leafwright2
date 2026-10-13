@@ -53,7 +53,13 @@ export function UserMenu({
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => signOut({ callbackUrl: "/" })} data-testid="nav-sign-out">
+        <DropdownMenuItem
+          onSelect={() => {
+            window.pendo?.clearSession?.();
+            void signOut({ callbackUrl: "/" });
+          }}
+          data-testid="nav-sign-out"
+        >
           <LogOut /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
